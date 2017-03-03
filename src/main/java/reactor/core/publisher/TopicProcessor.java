@@ -572,6 +572,8 @@ public final class TopicProcessor<E> extends EventLoopProcessor<E>  {
 				autoCancel, null);
 	}
 
+	ThreadFactory requestTaskThreadFactory;
+
 	final RingBuffer.Reader barrier;
 
 	final RingBuffer.Sequence minimum;
@@ -605,6 +607,32 @@ public final class TopicProcessor<E> extends EventLoopProcessor<E>  {
 
 		this.minimum = RingBuffer.newSequence(-1);
 		this.barrier = ringBuffer.newReader();
+		this.requestTaskThreadFactory = createDefaultRequestTaskThreadFactory();
+	}
+
+	ThreadFactory createDefaultRequestTaskThreadFactory() {
+		return r -> new Thread(r,this.name+"[request-task]");
+	}
+
+	/**
+	 * Call <strong>before</strong> {@link #subscribe() subscription} to customize the
+	 * {@link ThreadFactory} used for internal Threads spawned for request tasks.
+	 * The default will use the same name as the main processor executor's threads, with
+	 * a {@code [request-task]} suffix.
+	 * <p>
+	 * These threads are spawned {@link #onSubscribe(Subscription)}, so this method should
+	 * be called before subscription.
+	 *
+	 * @param factory the factory to use for {@link #requestTask(Subscription)}, or null
+	 * to reset to the default.
+	 */
+	public void setRequestTaskThreadFactory(ThreadFactory factory) {
+		if (factory == null) {
+			this.requestTaskThreadFactory = createDefaultRequestTaskThreadFactory();
+		}
+		else {
+			this.requestTaskThreadFactory = factory;
+		}
 	}
 
 	@Override
@@ -674,8 +702,6 @@ public final class TopicProcessor<E> extends EventLoopProcessor<E>  {
 		//ringBuffer.markAsTerminated();
 	}
 
-
-
 	@Override
 	public long getPending() {
 		return ringBuffer.getPending();
@@ -685,7 +711,8 @@ public final class TopicProcessor<E> extends EventLoopProcessor<E>  {
 	protected void requestTask(Subscription s) {
 		minimum.set(ringBuffer.getCursor());
 		ringBuffer.addGatingSequence(minimum);
-		new Thread(EventLoopProcessor.createRequestTask(s, () -> {
+		Thread t = requestTaskThreadFactory.newThread(
+				EventLoopProcessor.createRequestTask(s, () -> {
 					             if (!alive()) {
 						             WaitStrategy.alert();
 					             }
@@ -694,8 +721,8 @@ public final class TopicProcessor<E> extends EventLoopProcessor<E>  {
 						ringBuffer.getMinimumGatingSequence(minimum),
 				readWait,
 				this,
-				ringBuffer.bufferSize()),
-				name+"[request-task]").start();
+				ringBuffer.bufferSize()));
+		t.start();
 	}
 
 	@Override
@@ -914,5 +941,4 @@ public final class TopicProcessor<E> extends EventLoopProcessor<E>  {
 			halt();
 		}
 	}
-
 }
