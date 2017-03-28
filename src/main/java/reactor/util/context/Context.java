@@ -76,7 +76,7 @@ public interface Context {
 	 * @return the eventual value resolved by this type key or null
 	 */
 	default <T> T get(Class<T> key){
-		T v = get(key);
+		T v = get((Object)key);
 		if(key.isInstance(key)){
 			return v;
 		}
