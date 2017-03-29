@@ -37,7 +37,7 @@ abstract class CachedContextProducer<T> implements InnerProducer<T> {
 	static final Context PENDING = new Context() {
 		@Override
 		public Context put(Object key, Object value) {
-			return this;
+			return Context.empty().put(key, value);
 		}
 
 		@Override
