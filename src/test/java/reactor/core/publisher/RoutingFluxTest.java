@@ -50,6 +50,35 @@ public class RoutingFluxTest {
     }
 
     @Test
+    public void keyFunctionReturnsSubscriberToChoose() {
+        AssertSubscriber<Integer> ts1 = AssertSubscriber.create();
+        AssertSubscriber<Integer> ts2 = AssertSubscriber.create();
+
+        ConnectableFlux<Integer> p = RoutingFlux.create(Flux.range(1, 5), QueueSupplier.SMALL_BUFFER_SIZE,
+                value -> {
+                    if(value % 2 == 0) {
+                        return ts1;
+                    } else {
+                        return ts2;
+                    }
+                }, (subscriber, key) -> subscriber == key);
+
+        p.subscribe(ts1);
+        p.subscribe(ts2);
+
+        p.connect();
+
+        ts1.assertValues(2, 4)
+                .assertNoError()
+                .assertComplete();
+
+        ts2.assertValues(1, 3, 5)
+                .assertNoError()
+                .assertComplete();
+    }
+
+
+    @Test
     public void normalBackpressured() {
         AssertSubscriber<Integer> ts1 = AssertSubscriber.create(0);
         AssertSubscriber<Integer> ts2 = AssertSubscriber.create(0);
