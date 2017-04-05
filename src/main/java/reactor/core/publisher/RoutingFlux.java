@@ -14,7 +14,9 @@ import java.util.concurrent.CancellationException;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
+import java.util.function.BiPredicate;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
@@ -27,19 +29,23 @@ import java.util.stream.Stream;
  */
 public class RoutingFlux<T,K> extends ConnectableFlux<T> implements Scannable {
 
-    public static <T,K> RoutingFlux<T,K> create(Flux<T> source) {
-        return create(source, QueueSupplier.SMALL_BUFFER_SIZE);
+    public static <T> RoutingFlux<T,T> create(Flux<T> source) {
+        return create(source, QueueSupplier.SMALL_BUFFER_SIZE, t -> t, (subscription, k) -> true);
     }
 
-    public static <T,K> RoutingFlux<T,K> create(Flux<T> source, int prefetch) {
-        return (RoutingFlux<T,K> ) onAssembly(new RoutingFlux<T,K> (source, prefetch, QueueSupplier
-                .get(prefetch)));
+    public static <T,K> RoutingFlux<T,K> create(Flux<T> source, int prefetch, Function<T, K> keyFunction, BiPredicate<Subscription, K> subscriptionFilter) {
+        return (RoutingFlux<T,K> ) onAssembly(new RoutingFlux<>(source, prefetch, QueueSupplier
+                .get(prefetch), keyFunction, subscriptionFilter));
     }
 
     /**
      * The source observable.
      */
     final Flux<? extends T> source;
+
+    final Function<T, K> keyFunction;
+
+    final BiPredicate<Subscription, K> subscriptionFilter;
 
     /**
      * The size of the prefetch buffer.
@@ -57,7 +63,9 @@ public class RoutingFlux<T,K> extends ConnectableFlux<T> implements Scannable {
 
     RoutingFlux(Flux<? extends T> source,
                 int prefetch,
-                Supplier<? extends Queue<T>> queueSupplier) {
+                Supplier<? extends Queue<T>> queueSupplier, Function<T, K> keyFunction, BiPredicate<Subscription, K> subscriptionFilter) {
+        this.keyFunction = keyFunction;
+        this.subscriptionFilter = subscriptionFilter;
         if (prefetch <= 0) {
             throw new IllegalArgumentException("bufferSize > 0 required but it was " + prefetch);
         }
