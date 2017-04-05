@@ -37,13 +37,13 @@ public class RoutingFlux<T,K> extends ConnectableFlux<T> implements Scannable {
         return create(source, prefetch, t -> t, (subscriber, k) -> true);
     }
 
-    public static <T,K> RoutingFlux<T,K> create(Flux<T> source, int prefetch, Function<T, K> keyFunction,
+    public static <T,K> RoutingFlux<T,K> create(Flux<T> source, int prefetch, Function<? super T, K> keyFunction,
                                                 BiPredicate<Subscriber<? super T>, K> subscriberFilter) {
         return create(source, prefetch, keyFunction, subscriberFilter,
                 (subscriber) -> {}, (subscriber) -> {});
     }
 
-    public static <T,K> RoutingFlux<T,K> create(Flux<T> source, int prefetch, Function<T, K> keyFunction,
+    public static <T,K> RoutingFlux<T,K> create(Flux<T> source, int prefetch, Function<? super T, K> keyFunction,
                                                 BiPredicate<Subscriber<? super T>, K>
                                                         subscriptionFilter,
                                                 Consumer<Subscriber<? super T>> onSubscription,
@@ -57,7 +57,7 @@ public class RoutingFlux<T,K> extends ConnectableFlux<T> implements Scannable {
      */
     final Flux<? extends T> source;
 
-    final Function<T, K> routingKeyFunction;
+    final Function<? super T, K> routingKeyFunction;
 
     final BiPredicate<Subscriber<? super T>, K> subscriberFilter;
 
@@ -81,7 +81,7 @@ public class RoutingFlux<T,K> extends ConnectableFlux<T> implements Scannable {
 
     RoutingFlux(Flux<? extends T> source,
                 int prefetch,
-                Supplier<? extends Queue<T>> queueSupplier, Function<T, K> routingKeyFunction, BiPredicate<Subscriber<? super T>, K> subscriberFilter, Consumer<Subscriber<? super T>> onSubscriberAdded, Consumer<Subscriber<? super T>> onSubscriberRemoved) {
+                Supplier<? extends Queue<T>> queueSupplier, Function<? super T, K> routingKeyFunction, BiPredicate<Subscriber<? super T>, K> subscriberFilter, Consumer<Subscriber<? super T>> onSubscriberAdded, Consumer<Subscriber<? super T>> onSubscriberRemoved) {
         this.routingKeyFunction = routingKeyFunction;
         this.subscriberFilter = subscriberFilter;
         this.onSubscriberAdded = onSubscriberAdded;
