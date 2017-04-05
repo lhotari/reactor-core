@@ -25,14 +25,14 @@ import java.util.stream.Stream;
  *
  * @param <T>
  */
-public class RoutingFlux<T> extends ConnectableFlux<T> implements Scannable {
+public class RoutingFlux<T,K> extends ConnectableFlux<T> implements Scannable {
 
-    public static <V> RoutingFlux<V> create(Flux<V> source) {
+    public static <T,K> RoutingFlux<T,K> create(Flux<T> source) {
         return create(source, QueueSupplier.SMALL_BUFFER_SIZE);
     }
 
-    public static <V> RoutingFlux<V> create(Flux<V> source, int prefetch) {
-        return (RoutingFlux<V>) onAssembly(new RoutingFlux<V>(source, prefetch, QueueSupplier
+    public static <T,K> RoutingFlux<T,K> create(Flux<T> source, int prefetch) {
+        return (RoutingFlux<T,K> ) onAssembly(new RoutingFlux<T,K> (source, prefetch, QueueSupplier
                 .get(prefetch)));
     }
 
@@ -48,7 +48,7 @@ public class RoutingFlux<T> extends ConnectableFlux<T> implements Scannable {
 
     final Supplier<? extends Queue<T>> queueSupplier;
 
-    volatile RoutingFlux.PublishSubscriber<T> connection;
+    volatile RoutingFlux.PublishSubscriber<T,K> connection;
     @SuppressWarnings("rawtypes")
     static final AtomicReferenceFieldUpdater<RoutingFlux, RoutingFlux.PublishSubscriber> CONNECTION =
             AtomicReferenceFieldUpdater.newUpdater(RoutingFlux.class,
@@ -69,11 +69,11 @@ public class RoutingFlux<T> extends ConnectableFlux<T> implements Scannable {
     @Override
     public void connect(Consumer<? super Disposable> cancelSupport) {
         boolean doConnect;
-        RoutingFlux.PublishSubscriber<T> s;
+        RoutingFlux.PublishSubscriber<T,K> s;
         for (; ; ) {
             s = connection;
             if (s == null || s.isTerminated()) {
-                RoutingFlux.PublishSubscriber<T> u = new RoutingFlux.PublishSubscriber<>(prefetch, this);
+                RoutingFlux.PublishSubscriber<T,K> u = new RoutingFlux.PublishSubscriber<>(prefetch, this);
 
                 if (!CONNECTION.compareAndSet(this, s, u)) {
                     continue;
@@ -94,16 +94,16 @@ public class RoutingFlux<T> extends ConnectableFlux<T> implements Scannable {
 
     @Override
     public void subscribe(Subscriber<? super T> s) {
-        RoutingFlux.PublishInner<T> inner = new RoutingFlux.PublishInner<>(s);
+        RoutingFlux.PublishInner<T,K> inner = new RoutingFlux.PublishInner<>(s);
         s.onSubscribe(inner);
         for (; ; ) {
             if (inner.isCancelled()) {
                 break;
             }
 
-            RoutingFlux.PublishSubscriber<T> c = connection;
+            RoutingFlux.PublishSubscriber<T,K> c = connection;
             if (c == null || c.isTerminated()) {
-                RoutingFlux.PublishSubscriber<T> u = new RoutingFlux.PublishSubscriber<>(prefetch, this);
+                RoutingFlux.PublishSubscriber<T,K> u = new RoutingFlux.PublishSubscriber<>(prefetch, this);
                 if (!CONNECTION.compareAndSet(this, c, u)) {
                     continue;
                 }
@@ -133,12 +133,12 @@ public class RoutingFlux<T> extends ConnectableFlux<T> implements Scannable {
         return null;
     }
 
-    static final class PublishSubscriber<T>
+    static final class PublishSubscriber<T,K>
             implements InnerConsumer<T>, Disposable {
 
         final int prefetch;
 
-        final RoutingFlux<T> parent;
+        final RoutingFlux<T,K> parent;
 
         volatile Subscription s;
         @SuppressWarnings("rawtypes")
@@ -147,7 +147,7 @@ public class RoutingFlux<T> extends ConnectableFlux<T> implements Scannable {
                         Subscription.class,
                         "s");
 
-        volatile RoutingFlux.PublishInner<T>[] subscribers;
+        volatile RoutingFlux.PublishInner<T,K> [] subscribers;
 
         volatile int wip;
         @SuppressWarnings("rawtypes")
@@ -180,7 +180,7 @@ public class RoutingFlux<T> extends ConnectableFlux<T> implements Scannable {
         volatile boolean cancelled;
 
         @SuppressWarnings("unchecked")
-        PublishSubscriber(int prefetch, RoutingFlux<T> parent) {
+        PublishSubscriber(int prefetch, RoutingFlux<T,K> parent) {
             this.prefetch = prefetch;
             this.parent = parent;
             this.subscribers = EMPTY;
@@ -281,23 +281,23 @@ public class RoutingFlux<T> extends ConnectableFlux<T> implements Scannable {
         void disconnectAction() {
             queue.clear();
             CancellationException ex = new CancellationException("Disconnected");
-            for (RoutingFlux.PublishInner<T> inner : terminate()) {
+            for (RoutingFlux.PublishInner<T,K> inner : terminate()) {
                 inner.actual.onError(ex);
             }
         }
 
-        boolean add(RoutingFlux.PublishInner<T> inner) {
+        boolean add(RoutingFlux.PublishInner<T,K> inner) {
             if (subscribers == TERMINATED) {
                 return false;
             }
             synchronized (this) {
-                RoutingFlux.PublishInner<T>[] a = subscribers;
+                RoutingFlux.PublishInner<T,K> [] a = subscribers;
                 if (a == TERMINATED) {
                     return false;
                 }
                 int n = a.length;
 
-                @SuppressWarnings("unchecked") RoutingFlux.PublishInner<T>[] b =
+                @SuppressWarnings("unchecked") RoutingFlux.PublishInner<T,K> [] b =
                         new RoutingFlux.PublishInner[n + 1];
                 System.arraycopy(a, 0, b, 0, n);
                 b[n] = inner;
@@ -308,8 +308,8 @@ public class RoutingFlux<T> extends ConnectableFlux<T> implements Scannable {
         }
 
         @SuppressWarnings("unchecked")
-        void remove(RoutingFlux.PublishInner<T> inner) {
-            RoutingFlux.PublishInner<T>[] a = subscribers;
+        void remove(RoutingFlux.PublishInner<T,K> inner) {
+            RoutingFlux.PublishInner<T,K> [] a = subscribers;
             if (a == TERMINATED || a == EMPTY) {
                 return;
             }
@@ -331,7 +331,7 @@ public class RoutingFlux<T> extends ConnectableFlux<T> implements Scannable {
                     return;
                 }
 
-                RoutingFlux.PublishInner<T>[] b;
+                RoutingFlux.PublishInner<T,K> [] b;
                 if (n == 1) {
                     b = EMPTY;
                 } else {
@@ -345,8 +345,8 @@ public class RoutingFlux<T> extends ConnectableFlux<T> implements Scannable {
         }
 
         @SuppressWarnings("unchecked")
-        RoutingFlux.PublishInner<T>[] terminate() {
-            RoutingFlux.PublishInner<T>[] a;
+        RoutingFlux.PublishInner<T,K> [] terminate() {
+            RoutingFlux.PublishInner<T,K> [] a;
             for (; ; ) {
                 a = subscribers;
                 if (a == TERMINATED) {
@@ -366,7 +366,7 @@ public class RoutingFlux<T> extends ConnectableFlux<T> implements Scannable {
             return connected == 0 && CONNECTED.compareAndSet(this, 0, 1);
         }
 
-        boolean trySubscribe(RoutingFlux.PublishInner<T> inner) {
+        boolean trySubscribe(RoutingFlux.PublishInner<T,K> inner) {
             if (add(inner)) {
                 if (inner.isCancelled()) {
                     remove(inner);
@@ -405,13 +405,13 @@ public class RoutingFlux<T> extends ConnectableFlux<T> implements Scannable {
                 }
 
                 if (!empty) {
-                    RoutingFlux.PublishInner<T>[] a = subscribers;
+                    RoutingFlux.PublishInner<T,K> [] a = subscribers;
                     long maxRequested = Long.MAX_VALUE;
 
                     int len = a.length;
                     int cancel = 0;
 
-                    for (RoutingFlux.PublishInner<T> inner : a) {
+                    for (RoutingFlux.PublishInner<T,K> inner : a) {
                         long r = inner.requested;
                         if (r >= 0L) {
                             maxRequested = Math.min(maxRequested, r);
@@ -465,7 +465,7 @@ public class RoutingFlux<T> extends ConnectableFlux<T> implements Scannable {
                             break;
                         }
 
-                        for (RoutingFlux.PublishInner<T> inner : a) {
+                        for (RoutingFlux.PublishInner<T,K> inner : a) {
                             inner.actual.onNext(v);
                             if (inner.produced(1) == RoutingFlux.PublishInner.CANCEL_REQUEST) {
                                 cancel = Integer.MIN_VALUE;
@@ -502,13 +502,13 @@ public class RoutingFlux<T> extends ConnectableFlux<T> implements Scannable {
                     CONNECTION.compareAndSet(parent, this, null);
                     e = Exceptions.terminate(ERROR, this);
                     queue.clear();
-                    for (RoutingFlux.PublishInner<T> inner : terminate()) {
+                    for (RoutingFlux.PublishInner<T,K> inner : terminate()) {
                         inner.actual.onError(e);
                     }
                     return true;
                 } else if (empty) {
                     CONNECTION.compareAndSet(parent, this, null);
-                    for (RoutingFlux.PublishInner<T> inner : terminate()) {
+                    for (RoutingFlux.PublishInner<T,K> inner : terminate()) {
                         inner.actual.onComplete();
                     }
                     return true;
@@ -548,11 +548,11 @@ public class RoutingFlux<T> extends ConnectableFlux<T> implements Scannable {
 
     }
 
-    static final class PublishInner<T> implements InnerProducer<T> {
+    static final class PublishInner<T,K> implements InnerProducer<T> {
 
         final Subscriber<? super T> actual;
 
-        RoutingFlux.PublishSubscriber<T> parent;
+        RoutingFlux.PublishSubscriber<T,K> parent;
 
         volatile long requested;
         @SuppressWarnings("rawtypes")
@@ -567,7 +567,7 @@ public class RoutingFlux<T> extends ConnectableFlux<T> implements Scannable {
         public void request(long n) {
             if (Operators.validate(n)) {
                 requested(this, n);
-                RoutingFlux.PublishSubscriber<T> p = parent;
+                RoutingFlux.PublishSubscriber<T,K> p = parent;
                 if (p != null) {
                     p.drain();
                 }
@@ -582,7 +582,7 @@ public class RoutingFlux<T> extends ConnectableFlux<T> implements Scannable {
             if (r != Long.MIN_VALUE) {
                 r = REQUESTED.getAndSet(this, CANCEL_REQUEST);
                 if (r != CANCEL_REQUEST) {
-                    RoutingFlux.PublishSubscriber<T> p = parent;
+                    RoutingFlux.PublishSubscriber<T,K> p = parent;
                     if (p != null) {
                         p.remove(this);
                         p.drain();
@@ -620,7 +620,7 @@ public class RoutingFlux<T> extends ConnectableFlux<T> implements Scannable {
         }
 
         //TODO factorize in Operators ?
-        static void requested(RoutingFlux.PublishInner<?> inner, long n) {
+        static void requested(RoutingFlux.PublishInner<?,?> inner, long n) {
             for (; ; ) {
                 long r = REQUESTED.get(inner);
                 if (r == Long.MIN_VALUE || r == Long.MAX_VALUE) {
@@ -633,7 +633,7 @@ public class RoutingFlux<T> extends ConnectableFlux<T> implements Scannable {
             }
         }
 
-        static long produced(RoutingFlux.PublishInner<?> inner, long n) {
+        static long produced(RoutingFlux.PublishInner<?,?> inner, long n) {
             for (; ; ) {
                 long current = REQUESTED.get(inner);
                 if (current == Long.MIN_VALUE) {
