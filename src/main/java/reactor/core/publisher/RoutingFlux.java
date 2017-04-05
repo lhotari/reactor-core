@@ -7,8 +7,6 @@ import reactor.core.Exceptions;
 import reactor.core.Fuseable;
 import reactor.core.Scannable;
 import reactor.util.concurrent.QueueSupplier;
-import reactor.util.function.Tuple2;
-import reactor.util.function.Tuples;
 
 import java.util.Objects;
 import java.util.Queue;
@@ -36,20 +34,20 @@ public class RoutingFlux<T,K> extends ConnectableFlux<T> implements Scannable {
     }
 
     public static <T> RoutingFlux<T,T> create(Flux<T> source, int prefetch) {
-        return create(source, prefetch, t -> t, (subscriptionInfo, k) -> true);
+        return create(source, prefetch, t -> t, (subscriber, k) -> true);
     }
 
     public static <T,K> RoutingFlux<T,K> create(Flux<T> source, int prefetch, Function<T, K> keyFunction,
-                                                BiPredicate<Tuple2<Subscriber<? super T>, Subscription>, K> subscriptionFilter) {
+                                                BiPredicate<Subscriber<? super T>, K> subscriptionFilter) {
         return create(source, prefetch, keyFunction, subscriptionFilter,
-                (subscriptionInfo) -> {}, (subscriptionInfo) -> {});
+                (subscriber) -> {}, (subscriber) -> {});
     }
 
     public static <T,K> RoutingFlux<T,K> create(Flux<T> source, int prefetch, Function<T, K> keyFunction,
-                                                BiPredicate<Tuple2<Subscriber<? super T>, Subscription>, K>
+                                                BiPredicate<Subscriber<? super T>, K>
                                                         subscriptionFilter,
-                                                Consumer<Tuple2<Subscriber<? super T>, Subscription>> onSubscription,
-                                                Consumer<Tuple2<Subscriber<? super T>, Subscription>> onRemoval) {
+                                                Consumer<Subscriber<? super T>> onSubscription,
+                                                Consumer<Subscriber<? super T>> onRemoval) {
         return (RoutingFlux<T,K> ) onAssembly(new RoutingFlux<>(source, prefetch, QueueSupplier
                 .get(prefetch), keyFunction, subscriptionFilter, onSubscription, onRemoval));
     }
@@ -59,13 +57,13 @@ public class RoutingFlux<T,K> extends ConnectableFlux<T> implements Scannable {
      */
     final Flux<? extends T> source;
 
-    final Function<T, K> keyFunction;
+    final Function<T, K> routingKeyFunction;
 
-    final BiPredicate<Tuple2<Subscriber<? super T>, Subscription>, K> subscriptionFilter;
+    final BiPredicate<Subscriber<? super T>, K> subscriptionFilter;
 
-    final Consumer<Tuple2<Subscriber<? super T>, Subscription>> onSubscription;
+    final Consumer<Subscriber<? super T>> onSubscriberAdded;
 
-    final Consumer<Tuple2<Subscriber<? super T>, Subscription>> onRemoval;
+    final Consumer<Subscriber<? super T>> onSubscriberRemoved;
 
     /**
      * The size of the prefetch buffer.
@@ -83,11 +81,11 @@ public class RoutingFlux<T,K> extends ConnectableFlux<T> implements Scannable {
 
     RoutingFlux(Flux<? extends T> source,
                 int prefetch,
-                Supplier<? extends Queue<T>> queueSupplier, Function<T, K> keyFunction, BiPredicate<Tuple2<Subscriber<? super T>, Subscription>, K> subscriptionFilter, Consumer<Tuple2<Subscriber<? super T>, Subscription>> onSubscription, Consumer<Tuple2<Subscriber<? super T>, Subscription>> onRemoval) {
-        this.keyFunction = keyFunction;
+                Supplier<? extends Queue<T>> queueSupplier, Function<T, K> routingKeyFunction, BiPredicate<Subscriber<? super T>, K> subscriptionFilter, Consumer<Subscriber<? super T>> onSubscriberAdded, Consumer<Subscriber<? super T>> onSubscriberRemoved) {
+        this.routingKeyFunction = routingKeyFunction;
         this.subscriptionFilter = subscriptionFilter;
-        this.onSubscription = onSubscription;
-        this.onRemoval = onRemoval;
+        this.onSubscriberAdded = onSubscriberAdded;
+        this.onSubscriberRemoved = onSubscriberRemoved;
         if (prefetch <= 0) {
             throw new IllegalArgumentException("bufferSize > 0 required but it was " + prefetch);
         }
@@ -333,7 +331,7 @@ public class RoutingFlux<T,K> extends ConnectableFlux<T> implements Scannable {
                 b[n] = inner;
 
                 subscribers = b;
-                parent.onSubscription.accept(inner.subscriberAndSubscription);
+                parent.onSubscriberAdded.accept(inner.actual);
                 return true;
             }
         }
@@ -372,7 +370,7 @@ public class RoutingFlux<T,K> extends ConnectableFlux<T> implements Scannable {
                 }
 
                 subscribers = b;
-                parent.onRemoval.accept(inner.subscriberAndSubscription);
+                parent.onSubscriberRemoved.accept(inner.actual);
             }
         }
 
@@ -497,10 +495,10 @@ public class RoutingFlux<T,K> extends ConnectableFlux<T> implements Scannable {
                             break;
                         }
 
-                        K key = parent.keyFunction.apply(v);
+                        K key = parent.routingKeyFunction.apply(v);
 
                         for (RoutingFlux.PublishInner<T,K> inner : a) {
-                            if(parent.subscriptionFilter.test(inner.subscriberAndSubscription, key)) {
+                            if(parent.subscriptionFilter.test(inner.actual, key)) {
                                 inner.actual.onNext(v);
                                 if (inner.produced(1) == RoutingFlux.PublishInner.CANCEL_REQUEST) {
                                     cancel = Integer.MIN_VALUE;
@@ -590,8 +588,6 @@ public class RoutingFlux<T,K> extends ConnectableFlux<T> implements Scannable {
 
         RoutingFlux.PublishSubscriber<T,K> parent;
 
-        final Tuple2<Subscriber<? super T>, Subscription> subscriberAndSubscription;
-
         volatile long requested;
         @SuppressWarnings("rawtypes")
         static final AtomicLongFieldUpdater<RoutingFlux.PublishInner> REQUESTED =
@@ -599,7 +595,6 @@ public class RoutingFlux<T,K> extends ConnectableFlux<T> implements Scannable {
 
         PublishInner(Subscriber<? super T> actual) {
             this.actual = actual;
-            this.subscriberAndSubscription = Tuples.of(actual, this);
         }
 
         @Override
