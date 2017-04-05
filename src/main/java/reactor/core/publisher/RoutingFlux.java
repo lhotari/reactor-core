@@ -14,6 +14,7 @@ import java.util.concurrent.CancellationException;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
+import java.util.function.BiConsumer;
 import java.util.function.BiPredicate;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -30,12 +31,25 @@ import java.util.stream.Stream;
 public class RoutingFlux<T,K> extends ConnectableFlux<T> implements Scannable {
 
     public static <T> RoutingFlux<T,T> create(Flux<T> source) {
-        return create(source, QueueSupplier.SMALL_BUFFER_SIZE, t -> t, (subscription, k) -> true);
+        return create(source, QueueSupplier.SMALL_BUFFER_SIZE);
     }
 
-    public static <T,K> RoutingFlux<T,K> create(Flux<T> source, int prefetch, Function<T, K> keyFunction, BiPredicate<Subscription, K> subscriptionFilter) {
+    public static <T> RoutingFlux<T,T> create(Flux<T> source, int prefetch) {
+        return create(source, prefetch, t -> t, (subscription, k) -> true);
+    }
+
+    public static <T,K> RoutingFlux<T,K> create(Flux<T> source, int prefetch, Function<T, K> keyFunction,
+                                                BiPredicate<Subscription, K> subscriptionFilter) {
+        return create(source, prefetch, keyFunction, subscriptionFilter,
+                (subscriber, subscription) -> {}, (subscriber, subscription) -> {});
+    }
+
+    public static <T,K> RoutingFlux<T,K> create(Flux<T> source, int prefetch, Function<T, K> keyFunction,
+                                                BiPredicate<Subscription, K> subscriptionFilter,
+                                                BiConsumer<Subscriber<? super T>, Subscription> onSubscription,
+                                                BiConsumer<Subscriber<? super T>, Subscription> onRemoval) {
         return (RoutingFlux<T,K> ) onAssembly(new RoutingFlux<>(source, prefetch, QueueSupplier
-                .get(prefetch), keyFunction, subscriptionFilter));
+                .get(prefetch), keyFunction, subscriptionFilter, onSubscription, onRemoval));
     }
 
     /**
@@ -46,6 +60,10 @@ public class RoutingFlux<T,K> extends ConnectableFlux<T> implements Scannable {
     final Function<T, K> keyFunction;
 
     final BiPredicate<Subscription, K> subscriptionFilter;
+
+    final BiConsumer<Subscriber<? super T>, Subscription> onSubscription;
+
+    final BiConsumer<Subscriber<? super T>, Subscription> onRemoval;
 
     /**
      * The size of the prefetch buffer.
@@ -63,9 +81,11 @@ public class RoutingFlux<T,K> extends ConnectableFlux<T> implements Scannable {
 
     RoutingFlux(Flux<? extends T> source,
                 int prefetch,
-                Supplier<? extends Queue<T>> queueSupplier, Function<T, K> keyFunction, BiPredicate<Subscription, K> subscriptionFilter) {
+                Supplier<? extends Queue<T>> queueSupplier, Function<T, K> keyFunction, BiPredicate<Subscription, K> subscriptionFilter, BiConsumer<Subscriber<? super T>, Subscription> onSubscription, BiConsumer<Subscriber<? super T>, Subscription> onRemoval) {
         this.keyFunction = keyFunction;
         this.subscriptionFilter = subscriptionFilter;
+        this.onSubscription = onSubscription;
+        this.onRemoval = onRemoval;
         if (prefetch <= 0) {
             throw new IllegalArgumentException("bufferSize > 0 required but it was " + prefetch);
         }
@@ -311,6 +331,7 @@ public class RoutingFlux<T,K> extends ConnectableFlux<T> implements Scannable {
                 b[n] = inner;
 
                 subscribers = b;
+                parent.onSubscription.accept(inner.actual, inner);
                 return true;
             }
         }
@@ -349,6 +370,7 @@ public class RoutingFlux<T,K> extends ConnectableFlux<T> implements Scannable {
                 }
 
                 subscribers = b;
+                parent.onRemoval.accept(inner.actual, inner);
             }
         }
 
