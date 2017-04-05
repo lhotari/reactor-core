@@ -2,6 +2,7 @@ package reactor.core.publisher;
 
 import org.junit.Assert;
 import org.junit.Test;
+import org.reactivestreams.Subscriber;
 import reactor.core.Disposable;
 import reactor.core.scheduler.Schedulers;
 import reactor.test.StepVerifier;
@@ -16,7 +17,15 @@ public class RoutingFluxTest {
         AssertSubscriber<Integer> ts1 = AssertSubscriber.create();
         AssertSubscriber<Integer> ts2 = AssertSubscriber.create();
 
-        ConnectableFlux<Integer> p = RoutingFlux.create(Flux.range(1, 5));
+        ConnectableFlux<Integer> p = RoutingFlux.create(Flux.range(1, 5), QueueSupplier.SMALL_BUFFER_SIZE,
+                x -> x, (subscriptionInfo, value) -> {
+                    Subscriber<? super Integer> subscriber = subscriptionInfo.getT1();
+                    if(value % 2 == 0) {
+                        return subscriber == ts1;
+                    } else {
+                        return subscriber == ts2;
+                    }
+                });
 
         p.subscribe(ts1);
         p.subscribe(ts2);
@@ -33,11 +42,11 @@ public class RoutingFluxTest {
 
         p.connect();
 
-        ts1.assertValues(1, 2, 3, 4, 5)
+        ts1.assertValues(2, 4)
                 .assertNoError()
                 .assertComplete();
 
-        ts2.assertValues(1, 2, 3, 4, 5)
+        ts2.assertValues(1, 3, 5)
                 .assertNoError()
                 .assertComplete();
     }
