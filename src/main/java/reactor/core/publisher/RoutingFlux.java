@@ -38,8 +38,8 @@ public class RoutingFlux<T,K> extends ConnectableFlux<T> implements Scannable {
     }
 
     public static <T,K> RoutingFlux<T,K> create(Flux<T> source, int prefetch, Function<T, K> keyFunction,
-                                                BiPredicate<Subscriber<? super T>, K> subscriptionFilter) {
-        return create(source, prefetch, keyFunction, subscriptionFilter,
+                                                BiPredicate<Subscriber<? super T>, K> subscriberFilter) {
+        return create(source, prefetch, keyFunction, subscriberFilter,
                 (subscriber) -> {}, (subscriber) -> {});
     }
 
@@ -59,7 +59,7 @@ public class RoutingFlux<T,K> extends ConnectableFlux<T> implements Scannable {
 
     final Function<T, K> routingKeyFunction;
 
-    final BiPredicate<Subscriber<? super T>, K> subscriptionFilter;
+    final BiPredicate<Subscriber<? super T>, K> subscriberFilter;
 
     final Consumer<Subscriber<? super T>> onSubscriberAdded;
 
@@ -81,9 +81,9 @@ public class RoutingFlux<T,K> extends ConnectableFlux<T> implements Scannable {
 
     RoutingFlux(Flux<? extends T> source,
                 int prefetch,
-                Supplier<? extends Queue<T>> queueSupplier, Function<T, K> routingKeyFunction, BiPredicate<Subscriber<? super T>, K> subscriptionFilter, Consumer<Subscriber<? super T>> onSubscriberAdded, Consumer<Subscriber<? super T>> onSubscriberRemoved) {
+                Supplier<? extends Queue<T>> queueSupplier, Function<T, K> routingKeyFunction, BiPredicate<Subscriber<? super T>, K> subscriberFilter, Consumer<Subscriber<? super T>> onSubscriberAdded, Consumer<Subscriber<? super T>> onSubscriberRemoved) {
         this.routingKeyFunction = routingKeyFunction;
-        this.subscriptionFilter = subscriptionFilter;
+        this.subscriberFilter = subscriberFilter;
         this.onSubscriberAdded = onSubscriberAdded;
         this.onSubscriberRemoved = onSubscriberRemoved;
         if (prefetch <= 0) {
@@ -498,7 +498,7 @@ public class RoutingFlux<T,K> extends ConnectableFlux<T> implements Scannable {
                         K key = parent.routingKeyFunction.apply(v);
 
                         for (RoutingFlux.PublishInner<T,K> inner : a) {
-                            if(parent.subscriptionFilter.test(inner.actual, key)) {
+                            if(parent.subscriberFilter.test(inner.actual, key)) {
                                 inner.actual.onNext(v);
                                 if (inner.produced(1) == RoutingFlux.PublishInner.CANCEL_REQUEST) {
                                     cancel = Integer.MIN_VALUE;
