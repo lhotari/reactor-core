@@ -58,7 +58,7 @@ public class FluentRoutingFluxTest {
                 QueueSupplier.SMALL_BUFFER_SIZE, QueueSupplier.get(QueueSupplier.SMALL_BUFFER_SIZE), value -> value);
 
         Consumer<Integer> onDrop = x -> System.out.println("dropped " + x);
-        routingFlux.route(x -> x % 2 == 0, onDrop).onBackpressureDrop().subscribe();
+        routingFlux.route(x -> x % 2 == 0, onDrop);
         Flux<Integer> oddFlux = routingFlux.route(x -> x % 2 != 0, onDrop).log();
 
 
