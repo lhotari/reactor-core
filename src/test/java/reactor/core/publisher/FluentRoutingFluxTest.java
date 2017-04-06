@@ -1,11 +1,11 @@
 package reactor.core.publisher;
 
-import org.junit.Ignore;
 import org.junit.Test;
 import reactor.util.concurrent.QueueSupplier;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.Consumer;
 
 import static org.junit.Assert.assertEquals;
 
@@ -16,30 +16,38 @@ public class FluentRoutingFluxTest {
         FluentRoutingFlux<Integer, Integer> routingFlux = FluentRoutingFlux.create(Flux.range(1, 5),
                 QueueSupplier.SMALL_BUFFER_SIZE, QueueSupplier.get(QueueSupplier.SMALL_BUFFER_SIZE), value -> value);
 
-        Flux<Integer> evenFlux = routingFlux.route(x -> x % 2 == 0);
-        Flux<Integer> oddFlux = routingFlux.route(x -> x % 2 != 0);
+        Consumer<Integer> onDrop = x -> System.out.println("dropped " + x);
 
-        routingFlux.connect();
+        Flux<Integer> evenFlux = routingFlux.route(x -> x % 2 == 0, onDrop);
+        Flux<Integer> oddFlux = routingFlux.route(x -> x % 2 != 0, onDrop);
+
 
         Mono<List<Integer>> evenListMono = evenFlux.collectList().subscribe();
         Mono<List<Integer>> oddListMono = oddFlux.collectList().subscribe();
+
+        routingFlux.connect();
 
         assertEquals(Arrays.asList(2, 4), evenListMono.block());
         assertEquals(Arrays.asList(1, 3, 5), oddListMono.block());
     }
 
-    @Ignore
     @Test
     public void fluentRoutingSubscribePartiallyLastUnconsumed() {
         FluentRoutingFlux<Integer, Integer> routingFlux = FluentRoutingFlux.create(Flux.range(1, 5),
                 QueueSupplier.SMALL_BUFFER_SIZE, QueueSupplier.get(QueueSupplier.SMALL_BUFFER_SIZE), value -> value);
 
-        Flux<Integer> evenFlux = routingFlux.route(x -> x % 2 == 0);
-        routingFlux.route(x -> x % 2 != 0); // this is unused to test partially subscribed downstream fan-out
+        Consumer<Integer> onDrop = x -> System.out.println("dropped " + x);
 
-        routingFlux.connect();
+        Flux<Integer> evenFlux = routingFlux.route(x -> x % 2 == 0, onDrop);
+        routingFlux.route(x -> x % 2 != 0, onDrop);
+        // this is unused to test
+        // partially subscribed
+        // downstream fan-out
+
 
         MonoProcessor<List<Integer>> evenListMono = evenFlux.collectList().subscribe();
+
+        routingFlux.connect();
 
         assertEquals(Arrays.asList(2, 4), evenListMono.block());
     }
@@ -49,12 +57,14 @@ public class FluentRoutingFluxTest {
         FluentRoutingFlux<Integer, Integer> routingFlux = FluentRoutingFlux.create(Flux.range(1, 5),
                 QueueSupplier.SMALL_BUFFER_SIZE, QueueSupplier.get(QueueSupplier.SMALL_BUFFER_SIZE), value -> value);
 
-        routingFlux.route(x -> x % 2 == 0);
-        Flux<Integer> oddFlux = routingFlux.route(x -> x % 2 != 0).log();
+        Consumer<Integer> onDrop = x -> System.out.println("dropped " + x);
+        routingFlux.route(x -> x % 2 == 0, onDrop);
+        Flux<Integer> oddFlux = routingFlux.route(x -> x % 2 != 0, onDrop).log();
 
-        routingFlux.connect();
 
         Mono<List<Integer>> oddListMono = oddFlux.collectList().subscribe();
+
+        routingFlux.connect();
 
         assertEquals(Arrays.asList(1, 3, 5), oddListMono.block());
     }

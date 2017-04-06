@@ -37,10 +37,10 @@ public class FluentRoutingFlux<T, K> extends RoutingFlux<T, K> {
         this.routingRegistry = routingRegistry;
     }
 
-    public Flux<T> route(Predicate<K> interest) {
+    public Flux<T> route(Predicate<K> interest, Consumer<? super T> onDrop) {
         FluxProcessor<T, T> fluxProcessor = EmitterProcessor.create();
         routingRegistry.registerSubscriber(fluxProcessor, interest);
-        subscribe(fluxProcessor);
+        subscribeWithDropHandler(fluxProcessor, onDrop);
         return fluxProcessor;
     }
 }
