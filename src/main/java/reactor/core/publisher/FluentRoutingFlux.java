@@ -5,16 +5,20 @@ import org.reactivestreams.Subscriber;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Queue;
-import java.util.function.BiPredicate;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
+import java.util.stream.Stream;
 
 public class FluentRoutingFlux<T, K> extends RoutingFlux<T, K> {
     private static class RoutingRegistry<T, K> {
         private final Map<Subscriber<? super T>, Predicate<K>> interests = new HashMap<>();
-        final BiPredicate<Subscriber<? super T>, K> filter = (subscriber, k) -> interests.getOrDefault(subscriber, testVal -> false).test(k);
+        final BiFunction<Stream<Subscriber<? super T>>, K, Stream<Subscriber<? super T>>> filter = (subscribers, k) -> {
+          return subscribers.filter(subscriber -> interests.getOrDefault(subscriber, testVal -> false).test(k));
+        };
+
         final Consumer<Subscriber<? super T>> onSubscriberRemoved = subscriber -> interests.remove(subscriber);
 
         void registerSubscriber(Subscriber<? super T> subscriber, Predicate<K> interestFunction) {

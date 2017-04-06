@@ -8,13 +8,16 @@ import reactor.core.Fuseable;
 import reactor.core.Scannable;
 import reactor.util.concurrent.QueueSupplier;
 
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Queue;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
-import java.util.function.BiPredicate;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -34,17 +37,17 @@ public class RoutingFlux<T,K> extends ConnectableFlux<T> implements Scannable {
     }
 
     public static <T> RoutingFlux<T,T> create(Flux<T> source, int prefetch) {
-        return create(source, prefetch, t -> t, (subscriber, k) -> true);
+        return create(source, prefetch, Function.identity(), (subscribers, k) -> subscribers);
     }
 
-    public static <T,K> RoutingFlux<T,K> create(Flux<T> source, int prefetch, Function<? super T, K> keyFunction,
-                                                BiPredicate<Subscriber<? super T>, K> subscriberFilter) {
+    public static <T,K> RoutingFlux<T,K> create(Flux<T> source, int prefetch, Function<T, K> keyFunction,
+                                                BiFunction<Stream<Subscriber<? super T>>, K, Stream<Subscriber<? super T>>> subscriberFilter) {
         return create(source, prefetch, keyFunction, subscriberFilter,
                 (subscriber) -> {}, (subscriber) -> {});
     }
 
     public static <T,K> RoutingFlux<T,K> create(Flux<T> source, int prefetch, Function<? super T, K> keyFunction,
-                                                BiPredicate<Subscriber<? super T>, K>
+                                                BiFunction<Stream<Subscriber<? super T>>, K, Stream<Subscriber<? super T>>>
                                                         subscriptionFilter,
                                                 Consumer<Subscriber<? super T>> onSubscription,
                                                 Consumer<Subscriber<? super T>> onRemoval) {
@@ -59,7 +62,7 @@ public class RoutingFlux<T,K> extends ConnectableFlux<T> implements Scannable {
 
     final Function<? super T, K> routingKeyFunction;
 
-    final BiPredicate<Subscriber<? super T>, K> subscriberFilter;
+    final BiFunction<Stream<Subscriber<? super T>>, K, Stream<Subscriber<? super T>>> subscriberFilter;
 
     final Consumer<Subscriber<? super T>> onSubscriberAdded;
 
@@ -81,7 +84,7 @@ public class RoutingFlux<T,K> extends ConnectableFlux<T> implements Scannable {
 
     RoutingFlux(Flux<? extends T> source,
                 int prefetch,
-                Supplier<? extends Queue<T>> queueSupplier, Function<? super T, K> routingKeyFunction, BiPredicate<Subscriber<? super T>, K> subscriberFilter, Consumer<Subscriber<? super T>> onSubscriberAdded, Consumer<Subscriber<? super T>> onSubscriberRemoved) {
+                Supplier<? extends Queue<T>> queueSupplier, Function<? super T, K> routingKeyFunction, BiFunction<Stream<Subscriber<? super T>>, K, Stream<Subscriber<? super T>>> subscriberFilter, Consumer<Subscriber<? super T>> onSubscriberAdded, Consumer<Subscriber<? super T>> onSubscriberRemoved) {
         this.routingKeyFunction = routingKeyFunction;
         this.subscriberFilter = subscriberFilter;
         this.onSubscriberAdded = onSubscriberAdded;
@@ -176,6 +179,7 @@ public class RoutingFlux<T,K> extends ConnectableFlux<T> implements Scannable {
                         "s");
 
         volatile RoutingFlux.PublishInner<T,K> [] subscribers;
+        volatile Map<Subscriber<? super T>, PublishInner<T,K>> actualSubscriberToInner;
 
         volatile int wip;
         @SuppressWarnings("rawtypes")
@@ -331,6 +335,10 @@ public class RoutingFlux<T,K> extends ConnectableFlux<T> implements Scannable {
                 b[n] = inner;
 
                 subscribers = b;
+                if (actualSubscriberToInner == null) {
+                    actualSubscriberToInner = new HashMap<>();
+                }
+                actualSubscriberToInner.put(inner.actual, inner);
                 parent.onSubscriberAdded.accept(inner.actual);
                 return true;
             }
@@ -370,6 +378,7 @@ public class RoutingFlux<T,K> extends ConnectableFlux<T> implements Scannable {
                 }
 
                 subscribers = b;
+                actualSubscriberToInner.remove(inner.actual);
                 parent.onSubscriberRemoved.accept(inner.actual);
             }
         }
@@ -386,6 +395,7 @@ public class RoutingFlux<T,K> extends ConnectableFlux<T> implements Scannable {
                     a = subscribers;
                     if (a != TERMINATED) {
                         subscribers = TERMINATED;
+                        actualSubscriberToInner = null;
                     }
                     return a;
                 }
@@ -497,8 +507,13 @@ public class RoutingFlux<T,K> extends ConnectableFlux<T> implements Scannable {
 
                         K key = parent.routingKeyFunction.apply(v);
 
-                        for (RoutingFlux.PublishInner<T,K> inner : a) {
-                            if(parent.subscriberFilter.test(inner.actual, key)) {
+                        Stream<Subscriber<? super T>> filtered = parent.subscriberFilter.apply(Arrays.stream(a).map(x
+                                -> x.actual), key);
+
+                        for(Subscriber<? super T> actualSubscriber : (Iterable<Subscriber<? super T>>)filtered::iterator) {
+                            RoutingFlux.PublishInner<T, K> inner =
+                                    actualSubscriberToInner.get(actualSubscriber);
+                            if (inner != null) {
                                 inner.actual.onNext(v);
                                 if (inner.produced(1) == RoutingFlux.PublishInner.CANCEL_REQUEST) {
                                     cancel = Integer.MIN_VALUE;

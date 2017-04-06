@@ -15,3 +15,10 @@ a downstream flux. Internally it creates an `EmitterProcessor` that is added as 
 
 Each use case has special requirements and design decisions on how to handle situations like back pressure.
 By default, the `RoutingFlux` stops emitting values when any of the downstream subscribers is back pressured.
+
+
+### Design problems
+
+#### Each filter has to be evaluated once
+
+Solution: pass all active subscribers to selection function. Should return a list of filtered subscribers back.

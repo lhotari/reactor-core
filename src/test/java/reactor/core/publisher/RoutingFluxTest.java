@@ -9,6 +9,7 @@ import reactor.test.subscriber.AssertSubscriber;
 import reactor.util.concurrent.QueueSupplier;
 
 import java.util.concurrent.CancellationException;
+import java.util.function.Function;
 
 public class RoutingFluxTest {
     @Test
@@ -17,12 +18,15 @@ public class RoutingFluxTest {
         AssertSubscriber<Integer> ts2 = AssertSubscriber.create();
 
         ConnectableFlux<Integer> p = RoutingFlux.create(Flux.range(1, 5), QueueSupplier.SMALL_BUFFER_SIZE,
-                x -> x, (subscriber, value) -> {
-                    if(value % 2 == 0) {
-                        return subscriber == ts1;
-                    } else {
-                        return subscriber == ts2;
-                    }
+                Function.identity(),
+                (subscribers, value) -> {
+                    return subscribers.filter(subscriber -> {
+                        if (value % 2 == 0) {
+                            return subscriber == ts1;
+                        } else {
+                            return subscriber == ts2;
+                        }
+                    });
                 });
 
         p.subscribe(ts1);
@@ -61,7 +65,9 @@ public class RoutingFluxTest {
                     } else {
                         return ts2;
                     }
-                }, (subscriber, key) -> subscriber == key);
+                },
+                (subscribers, key) -> subscribers.filter(subscriber -> subscriber == key)
+        );
 
         p.subscribe(ts1);
         p.subscribe(ts2);
