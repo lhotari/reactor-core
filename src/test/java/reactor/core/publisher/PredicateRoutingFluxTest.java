@@ -5,6 +5,7 @@ import reactor.util.concurrent.QueueSupplier;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.Function;
 
 import static org.junit.Assert.assertEquals;
 
@@ -13,7 +14,8 @@ public class PredicateRoutingFluxTest {
     @Test
     public void supportFluentRoutingSyntax() {
         PredicateRoutingFlux<Integer, Integer> routingFlux = PredicateRoutingFlux.create(Flux.range(1, 5),
-                QueueSupplier.SMALL_BUFFER_SIZE, QueueSupplier.get(QueueSupplier.SMALL_BUFFER_SIZE), value -> value);
+                QueueSupplier.SMALL_BUFFER_SIZE, QueueSupplier.get(QueueSupplier.SMALL_BUFFER_SIZE),
+                Function.identity());
 
         Flux<Integer> evenFlux = routingFlux.route(x -> x % 2 == 0);
         Flux<Integer> oddFlux = routingFlux.route(x -> x % 2 != 0);
@@ -30,7 +32,8 @@ public class PredicateRoutingFluxTest {
     @Test
     public void fluentRoutingSubscribePartiallyLastUnconsumed() {
         PredicateRoutingFlux<Integer, Integer> routingFlux = PredicateRoutingFlux.create(Flux.range(1, 5),
-                QueueSupplier.SMALL_BUFFER_SIZE, QueueSupplier.get(QueueSupplier.SMALL_BUFFER_SIZE), value -> value);
+                QueueSupplier.SMALL_BUFFER_SIZE, QueueSupplier.get(QueueSupplier.SMALL_BUFFER_SIZE),
+                Function.identity());
 
         Flux<Integer> evenFlux = routingFlux.route(x -> x % 2 == 0);
         routingFlux.route(x -> x % 2 != 0).log().onBackpressureDrop().subscribe(); // this is unused to test partially subscribed downstream fan-out
@@ -45,7 +48,8 @@ public class PredicateRoutingFluxTest {
     @Test
     public void fluentRoutingSubscribePartiallyLastConsumed() {
         PredicateRoutingFlux<Integer, Integer> routingFlux = PredicateRoutingFlux.create(Flux.range(1, 5),
-                QueueSupplier.SMALL_BUFFER_SIZE, QueueSupplier.get(QueueSupplier.SMALL_BUFFER_SIZE), value -> value);
+                QueueSupplier.SMALL_BUFFER_SIZE, QueueSupplier.get(QueueSupplier.SMALL_BUFFER_SIZE),
+                Function.identity());
 
         routingFlux.route(x -> x % 2 == 0).log().onBackpressureDrop().subscribe();
         Flux<Integer> oddFlux = routingFlux.route(x -> x % 2 != 0).log();

@@ -13,8 +13,8 @@ public class KeyedRoutingFluxTest {
     @Test
     public void supportKeyedRouting() {
         KeyedRoutingFlux<Integer, Integer> routingFlux = KeyedRoutingFlux.create(Flux.range(1, 5),
-                QueueSupplier.SMALL_BUFFER_SIZE, QueueSupplier.get(QueueSupplier.SMALL_BUFFER_SIZE), value -> value %
-                        2);
+                QueueSupplier.SMALL_BUFFER_SIZE, QueueSupplier.get(QueueSupplier.SMALL_BUFFER_SIZE),
+                value -> value % 2);
 
         Flux<Integer> evenFlux = routingFlux.route(0);
         Flux<Integer> oddFlux = routingFlux.route(1);
