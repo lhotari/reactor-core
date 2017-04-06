@@ -28,14 +28,13 @@ public class FluentRoutingFluxTest {
         assertEquals(Arrays.asList(1, 3, 5), oddListMono.block());
     }
 
-    @Ignore
     @Test
     public void fluentRoutingSubscribePartiallyLastUnconsumed() {
         FluentRoutingFlux<Integer, Integer> routingFlux = FluentRoutingFlux.create(Flux.range(1, 5),
                 QueueSupplier.SMALL_BUFFER_SIZE, QueueSupplier.get(QueueSupplier.SMALL_BUFFER_SIZE), value -> value);
 
         Flux<Integer> evenFlux = routingFlux.route(x -> x % 2 == 0);
-        routingFlux.route(x -> x % 2 != 0); // this is unused to test partially subscribed downstream fan-out
+        routingFlux.route(x -> x % 2 != 0).log().onBackpressureDrop().subscribe(); // this is unused to test partially subscribed downstream fan-out
 
         routingFlux.connect();
 
@@ -49,7 +48,7 @@ public class FluentRoutingFluxTest {
         FluentRoutingFlux<Integer, Integer> routingFlux = FluentRoutingFlux.create(Flux.range(1, 5),
                 QueueSupplier.SMALL_BUFFER_SIZE, QueueSupplier.get(QueueSupplier.SMALL_BUFFER_SIZE), value -> value);
 
-        routingFlux.route(x -> x % 2 == 0);
+        routingFlux.route(x -> x % 2 == 0).log().onBackpressureDrop().subscribe();
         Flux<Integer> oddFlux = routingFlux.route(x -> x % 2 != 0).log();
 
         routingFlux.connect();
