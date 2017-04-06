@@ -10,7 +10,7 @@ value downstream for each registered downstream subscriber.
 ### Basic building block
 
 The `RoutingFlux` class can be used as a building block for creating routers for different type of use cases.
-For example, in the spike, `FluentRoutingFlux` provides a `route(Predicate<K> interest)` method which can be used to create
+For example, in the spike, `PredicateRoutingFlux` provides a `route(Predicate<K> interest)` method which can be used to create
 a downstream flux. Internally it creates an `EmitterProcessor` that is added as a subscriber to the `RoutingFlux`.
 
 Each use case has special requirements and design decisions on how to handle situations like back pressure.
@@ -21,4 +21,8 @@ By default, the `RoutingFlux` stops emitting values when any of the downstream s
 
 #### Each filter has to be evaluated once
 
-Solution: pass all active subscribers to selection function. Should return a list of filtered subscribers back.
+Solution: pass all active subscribers as a stream to selection function. Should return a stream of filtered subscribers 
+back.
+This allows implementing optimized keyed routing when it's required, without changing the underlying basic building 
+block. `KeyedRoutingFlux` is an example of optimized keyed routing. 
+
