@@ -17,7 +17,7 @@ In the spike, [`PredicateRoutingFlux`](src/main/java/reactor/core/publisher/Pred
 provides a `route(Predicate<K> interest)` method which can be used to create
 a downstream flux. Internally it creates an `EmitterProcessor` that is added as a subscriber to the `RoutingFlux`.
 [`KeyedRoutingFlux`](src/main/java/reactor/core/publisher/KeyedRoutingFlux.java) is an example of optimized 
-keyed routing. The benefit to `PredicateRoutingFlux` is that the routing decision can be made without 
+keyed routing. The benefit of it over `PredicateRoutingFlux` is that the routing decision can be made without 
 executing a predicate function for every subscriber for every value that is emitted to the downstream subscribers. 
 
 ### Design problems
