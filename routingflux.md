@@ -2,20 +2,23 @@
 
 ### What does the routing flux do
 
-It conditionally publishes values requested from the source flux into downstream subscribers.
-This is what is called "routing". The routing decision can be made on a key that is calculated
-for each value in the stream. This key is passed to the function that makes a decision whether to publish the 
-value downstream for each registered downstream subscriber. 
+It conditionally emits values received from the source flux into downstream subscribers.
+This is what is called "routing". The routing decision can be made on a key that is calculated once
+for each source value in the stream. This key is passed to a function that makes the decision of emitting the source
+value to downstream subscribers. 
 
 ### Basic building block
 
-The `RoutingFlux` class can be used as a building block for creating routers for different type of use cases.
-For example, in the spike, `PredicateRoutingFlux` provides a `route(Predicate<K> interest)` method which can be used to create
+The [`RoutingFlux`](src/main/java/reactor/core/publisher/RoutingFlux.java) class can be used as a building block for 
+creating routers for different type of use cases. Most of the source code for `RoutingFlux` originates from 
+[`FluxPublish`](src/main/java/reactor/core/publisher/FluxPublish.java).
+
+In the spike, [`PredicateRoutingFlux`](src/main/java/reactor/core/publisher/PredicateRoutingFlux.java)
+provides a `route(Predicate<K> interest)` method which can be used to create
 a downstream flux. Internally it creates an `EmitterProcessor` that is added as a subscriber to the `RoutingFlux`.
-
-Each use case has special requirements and design decisions on how to handle situations like back pressure.
-By default, the `RoutingFlux` stops emitting values when any of the downstream subscribers is back pressured.
-
+[`KeyedRoutingFlux`](src/main/java/reactor/core/publisher/KeyedRoutingFlux.java) is an example of optimized 
+keyed routing. The benefit to `PredicateRoutingFlux` is that the routing decision can be made without 
+executing a predicate function for every subscriber for every value that is emitted to the downstream subscribers. 
 
 ### Design problems
 
@@ -24,5 +27,48 @@ By default, the `RoutingFlux` stops emitting values when any of the downstream s
 Solution: pass all active subscribers as a stream to selection function. Should return a stream of filtered subscribers 
 back.
 This allows implementing optimized keyed routing when it's required, without changing the underlying basic building 
-block. `KeyedRoutingFlux` is an example of optimized keyed routing. 
+block. See [`KeyedRoutingFlux`](src/main/java/reactor/core/publisher/KeyedRoutingFlux.java) for an example.
 
+#### Backpressure in a single downstream subscriber stops the stream
+
+By default, the `RoutingFlux` stops emitting values when any of the downstream subscribers is back pressured.
+This might be a problem for some use cases and might be confusing from the developer's perspective. 
+
+
+### API examples
+
+[`PredicateRoutingFlux`](src/main/java/reactor/core/publisher/PredicateRoutingFlux.java) example
+```java
+PredicateRoutingFlux<Integer, Integer> routingFlux = PredicateRoutingFlux.create(Flux.range(1, 5),
+        QueueSupplier.SMALL_BUFFER_SIZE, QueueSupplier.get(QueueSupplier.SMALL_BUFFER_SIZE), 
+        Function.identity());
+
+Flux<Integer> evenFlux = routingFlux.route(x -> x % 2 == 0);
+Flux<Integer> oddFlux = routingFlux.route(x -> x % 2 != 0);
+
+routingFlux.connect();
+
+Mono<List<Integer>> evenListMono = evenFlux.collectList().subscribe();
+Mono<List<Integer>> oddListMono = oddFlux.collectList().subscribe();
+
+assertEquals(Arrays.asList(2, 4), evenListMono.block());
+assertEquals(Arrays.asList(1, 3, 5), oddListMono.block());
+```
+
+[`KeyedRoutingFlux`](src/main/java/reactor/core/publisher/KeyedRoutingFlux.java) example
+```java
+KeyedRoutingFlux<Integer, Integer> routingFlux = KeyedRoutingFlux.create(Flux.range(1, 5),
+        QueueSupplier.SMALL_BUFFER_SIZE, QueueSupplier.get(QueueSupplier.SMALL_BUFFER_SIZE), 
+        value -> value % 2);
+
+Flux<Integer> evenFlux = routingFlux.route(0);
+Flux<Integer> oddFlux = routingFlux.route(1);
+
+routingFlux.connect();
+
+Mono<List<Integer>> evenListMono = evenFlux.collectList().subscribe();
+Mono<List<Integer>> oddListMono = oddFlux.collectList().subscribe();
+
+assertEquals(Arrays.asList(2, 4), evenListMono.block());
+assertEquals(Arrays.asList(1, 3, 5), oddListMono.block());
+```
