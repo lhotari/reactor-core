@@ -31,9 +31,13 @@ block. See [`KeyedRoutingFlux`](src/main/java/reactor/core/publisher/KeyedRoutin
 
 #### Backpressure in a single downstream subscriber stops the stream
 
-By default, the `RoutingFlux` stops emitting values when any of the downstream subscribers is back pressured.
-This might be a problem for some use cases and might be confusing from the developer's perspective. 
-
+Currently when any downstream subscriber gets backpressured, it will stop the `RoutingFlux` stream 
+and no values get emitted to any downstream subscriber. This is a safe default, but might be a problem 
+for some use cases and could be confusing from the developer's perspective if there's not solutions for easily 
+configuring backpressure dropping in these cases. Currently every downstream would have to contain a separate 
+operator for dropping values on backpressure to be able to configure this. The alternative would be to support
+configuring backpressure on the emitting side. It's a fairly easy change to `RoutingFlux` to handle this, but 
+is it adding unnecessary complexity?
 
 ### API examples
 
