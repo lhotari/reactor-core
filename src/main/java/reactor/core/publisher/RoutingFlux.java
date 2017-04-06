@@ -52,10 +52,6 @@ public class RoutingFlux<T,K> extends ConnectableFlux<T> implements Scannable {
                 .get(prefetch), keyFunction, subscriptionFilter, onSubscription, onRemoval));
     }
 
-    static final Consumer<Object> NOOP = t -> {
-
-    };
-
     /**
      * The source observable.
      */
@@ -126,11 +122,7 @@ public class RoutingFlux<T,K> extends ConnectableFlux<T> implements Scannable {
 
     @Override
     public void subscribe(Subscriber<? super T> s) {
-        subscribeWithDropHandler(s, NOOP);
-    }
-
-    protected void subscribeWithDropHandler(Subscriber<? super T> s, Consumer<? super T> onDrop) {
-        RoutingFlux.PublishInner<T,K> inner = new RoutingFlux.PublishInner<>(s, onDrop);
+        RoutingFlux.PublishInner<T,K> inner = new RoutingFlux.PublishInner<>(s);
         s.onSubscribe(inner);
         for (; ; ) {
             if (inner.isCancelled()) {
@@ -452,9 +444,7 @@ public class RoutingFlux<T,K> extends ConnectableFlux<T> implements Scannable {
                     for (RoutingFlux.PublishInner<T,K> inner : a) {
                         long r = inner.requested;
                         if (r >= 0L) {
-                            if (r > 0L) {
-                                maxRequested = Math.min(maxRequested, r);
-                            }
+                            maxRequested = Math.min(maxRequested, r);
                         } else { //Long.MIN == PublishInner.CANCEL_REQUEST
                             cancel++;
                         }
@@ -509,13 +499,9 @@ public class RoutingFlux<T,K> extends ConnectableFlux<T> implements Scannable {
 
                         for (RoutingFlux.PublishInner<T,K> inner : a) {
                             if(parent.subscriberFilter.test(inner.actual, key)) {
-                                if(inner.requested == 0) {
-                                    inner.onDrop.accept(v);
-                                } else {
-                                    inner.actual.onNext(v);
-                                    if (inner.produced(1) == RoutingFlux.PublishInner.CANCEL_REQUEST) {
-                                        cancel = Integer.MIN_VALUE;
-                                    }
+                                inner.actual.onNext(v);
+                                if (inner.produced(1) == RoutingFlux.PublishInner.CANCEL_REQUEST) {
+                                    cancel = Integer.MIN_VALUE;
                                 }
                             }
                         }
@@ -599,7 +585,6 @@ public class RoutingFlux<T,K> extends ConnectableFlux<T> implements Scannable {
     static final class PublishInner<T,K> implements InnerProducer<T> {
 
         final Subscriber<? super T> actual;
-        final Consumer<? super T> onDrop;
 
         RoutingFlux.PublishSubscriber<T,K> parent;
 
@@ -608,9 +593,8 @@ public class RoutingFlux<T,K> extends ConnectableFlux<T> implements Scannable {
         static final AtomicLongFieldUpdater<RoutingFlux.PublishInner> REQUESTED =
                 AtomicLongFieldUpdater.newUpdater(RoutingFlux.PublishInner.class, "requested");
 
-        PublishInner(Subscriber<? super T> actual, Consumer<? super T> onDrop) {
+        PublishInner(Subscriber<? super T> actual) {
             this.actual = actual;
-            this.onDrop = onDrop;
         }
 
         @Override
