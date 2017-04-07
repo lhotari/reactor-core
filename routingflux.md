@@ -1,3 +1,5 @@
+# This doc is outdated, [more recent doc in reactor-addons](https://github.com/lhotari/reactor-addons/blob/lh-routingflux/docs/src/docs/asciidoc/routing.adoc)
+
 # Routing flux design doc
 
 ### What does the routing flux do
